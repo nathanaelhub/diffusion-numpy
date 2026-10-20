@@ -65,6 +65,36 @@ def check(n_classes: int = 10, seed: int = 0, eps: float = 1e-5, per_param: int 
     return worst
 
 
+def check_layer(layer, x: np.ndarray, seed: int = 0, eps: float = 1e-5, per_tensor: int = 12) -> float:
+    """The same test for one layer: L = sum(r * layer(x)) for a fixed random r,
+    checking dL/dx and every parameter gradient. Returns worst error / tolerance."""
+    rng = np.random.default_rng(seed)
+    r = rng.standard_normal(layer.forward(x).shape)
+
+    def loss():
+        return float((r * layer.forward(x)).sum())
+
+    if layer.params:
+        layer.zero_grad()
+    layer.forward(x)
+    dx = layer.backward(r.copy())
+    grads = {k: g.copy() for k, g in layer.grads.items()}
+    tensors = [("x", x, dx)] + [(k, v, grads[k]) for k, v in layer.params.items()]
+    worst = 0.0
+    for _, arr, ana_all in tensors:
+        flat, ana = arr.reshape(-1), ana_all.reshape(-1)
+        for i in rng.choice(flat.size, min(per_tensor, flat.size), replace=False):
+            old = flat[i]
+            flat[i] = old + eps
+            lp = loss()
+            flat[i] = old - eps
+            lm = loss()
+            flat[i] = old
+            num = (lp - lm) / (2 * eps)
+            worst = max(worst, abs(num - ana[i]) / (ATOL + RTOL * abs(num)))
+    return worst
+
+
 if __name__ == "__main__":
     for n in (0, 10):
         e = check(n_classes=n)

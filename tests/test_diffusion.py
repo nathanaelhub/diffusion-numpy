@@ -153,3 +153,49 @@ def test_denoiser_learns_on_a_tiny_problem():
         net.backward(2 * d / d.size)
         opt.step(net.gradients())
     assert mse() < 0.5 * before
+
+
+# --- convolutional layers ---------------------------------------------------
+
+from diffusion.conv import AvgPool2, Conv2d, GroupNorm, Upsample2  # noqa: E402
+
+
+def _x(shape, seed=0):
+    return np.random.default_rng(seed).standard_normal(shape)
+
+
+@pytest.mark.parametrize("c_in,c_out,k,pad", [(2, 3, 3, 1), (2, 3, 3, 0), (3, 2, 1, 0)])
+def test_conv2d_gradients(c_in, c_out, k, pad):
+    layer = Conv2d(c_in, c_out, k, np.random.default_rng(1), padding=pad, dtype=np.float64)
+    layer.params["b"] += 0.3
+    assert gradcheck.check_layer(layer, _x((2, c_in, 5, 6))) <= 1.0
+
+
+def test_conv2d_matches_a_naive_convolution():
+    rng = np.random.default_rng(0)
+    layer = Conv2d(2, 3, 3, rng, padding=1, dtype=np.float64)
+    x = _x((2, 2, 4, 5))
+    W = layer.params["W"].reshape(2, 3, 3, 3)  # (c_in, ky, kx, c_out)
+    xp = np.pad(x, ((0, 0), (0, 0), (1, 1), (1, 1)))
+    naive = np.zeros((2, 3, 4, 5))
+    for n in range(2):
+        for o in range(3):
+            for i in range(4):
+                for j in range(5):
+                    naive[n, o, i, j] = (xp[n, :, i:i + 3, j:j + 3] * W[:, :, :, o]).sum() + layer.params["b"][o]
+    assert np.allclose(layer.forward(x), naive)
+
+
+def test_groupnorm_gradients_and_normalization():
+    layer = GroupNorm(2, 4, dtype=np.float64)
+    layer.params["g"] += np.array([0.5, -0.2, 0.1, 0.3])
+    layer.params["b"] += 0.2
+    x = _x((3, 4, 3, 3)) * 4 + 1
+    assert gradcheck.check_layer(layer, x) <= 1.0
+    y = GroupNorm(2, 4, dtype=np.float64).forward(x).reshape(3, 2, -1)
+    assert np.allclose(y.mean(2), 0, atol=1e-7) and np.allclose(y.std(2), 1, atol=1e-3)
+
+
+@pytest.mark.parametrize("layer", [AvgPool2(), Upsample2()])
+def test_resampling_gradients(layer):
+    assert gradcheck.check_layer(layer, _x((2, 3, 4, 6))) <= 1.0
