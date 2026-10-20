@@ -1,0 +1,28 @@
+[project]
+name = "diffusion-numpy"
+version = "0.1.0"
+description = "Denoising diffusion (DDPM) from scratch in NumPy: hand-derived gradients, v-prediction, DDIM and classifier-free guidance on MNIST."
+readme = "README.md"
+license = "MIT"
+authors = [
+    { name = "Nathanael Johnson", email = "nathanaeljdj@gmail.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+]
+
+[project.scripts]
+ddpm = "diffusion.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.13,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "diffusion"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
