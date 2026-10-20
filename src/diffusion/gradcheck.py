@@ -25,7 +25,15 @@ def loss_and_grad(net: Denoiser, x, t, y, target):
 ATOL, RTOL = 1e-8, 1e-5
 
 
-def check(n_classes: int = 10, seed: int = 0, eps: float = 1e-5, per_param: int = 6) -> float:
+def tiny_model(arch: str, n_classes: int, seed: int):
+    if arch == "unet":
+        from .unet import UNet
+        return UNet(dim=64, channels=(4, 8), groups=2, temb_dim=8, temb_width=8, n_classes=n_classes,
+                    seed=seed, dtype=np.float64)
+    return Denoiser(dim=12, width=16, blocks=2, temb_dim=8, n_classes=n_classes, seed=seed, dtype=np.float64)
+
+
+def check(n_classes: int = 10, seed: int = 0, eps: float = 1e-5, per_param: int = 6, arch: str = "mlp") -> float:
     """Worst |numeric - analytic| / (ATOL + RTOL |numeric|) over a sample of
     entries from every parameter; <= 1 means every entry passes.
 
@@ -34,15 +42,16 @@ def check(n_classes: int = 10, seed: int = 0, eps: float = 1e-5, per_param: int 
     round-off reads as a 1e-4 "error".
     """
     rng = np.random.default_rng(seed)
-    net = Denoiser(dim=12, width=16, blocks=2, temb_dim=8, n_classes=n_classes, seed=seed, dtype=np.float64)
-    # Non-default LayerNorm gains and biases, so their gradients are exercised.
+    net = tiny_model(arch, n_classes, seed)
+    dim = net.config["dim"]
+    # Non-default norm gains and biases, so their gradients are exercised.
     for name, p in net.parameters().items():
         if name.endswith((".g", ".b")):
             p += rng.standard_normal(p.shape) * 0.3
-    x = rng.standard_normal((5, 12))
+    x = rng.standard_normal((5, dim))
     t = rng.integers(0, 1000, 5)
     y = rng.integers(0, n_classes + 1, 5) if n_classes else None
-    target = rng.standard_normal((5, 12))
+    target = rng.standard_normal((5, dim))
 
     net.zero_grad()
     _, dout = loss_and_grad(net, x, t, y, target)
@@ -96,6 +105,7 @@ def check_layer(layer, x: np.ndarray, seed: int = 0, eps: float = 1e-5, per_tens
 
 
 if __name__ == "__main__":
-    for n in (0, 10):
-        e = check(n_classes=n)
-        print(f"n_classes={n}: worst error / tolerance {e:.3f} -> {'PASS' if e <= 1 else 'FAIL'}")
+    for arch in ("mlp", "unet"):
+        for n in (0, 10):
+            e = check(n_classes=n, arch=arch)
+            print(f"{arch} n_classes={n}: worst error / tolerance {e:.3f} -> {'PASS' if e <= 1 else 'FAIL'}")

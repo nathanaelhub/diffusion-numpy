@@ -14,8 +14,13 @@ from .nn import Layer
 
 class Conv2d(Layer):
     """Stride-1 convolution by im2col: gather every k x k patch into a row,
-    then one matrix multiply. Backward scatters the patch gradients back
-    (col2im) with a loop over the k^2 kernel offsets, not over pixels."""
+    then one matrix multiply.
+
+    Inside the layer the data is channels-last (NHWC): a patch row is then k^2
+    contiguous runs of channels, and the backward scatter (col2im) adds
+    contiguous slices. Building patches from the NCHW window view with a
+    transpose was 3x slower, all of it in strided copies.
+    """
 
     def __init__(self, c_in: int, c_out: int, k: int, rng: np.random.Generator, padding: int | None = None,
                  dtype=np.float32, scale: float = 1.0):
@@ -23,7 +28,7 @@ class Conv2d(Layer):
         self.k, self.c_in, self.c_out = k, c_in, c_out
         self.pad = k // 2 if padding is None else padding
         fan_in = c_in * k * k
-        # Rows are ordered (c_in, ky, kx), matching the patch layout below.
+        # Rows are ordered (ky, kx, c_in), matching the patch layout below.
         self.params = {"W": (rng.standard_normal((fan_in, c_out)) * scale * np.sqrt(2.0 / fan_in)).astype(dtype),
                        "b": np.zeros(c_out, dtype=dtype)}
         self.zero_grad()
@@ -31,11 +36,16 @@ class Conv2d(Layer):
     def forward(self, x):
         n, c, h, w = x.shape
         p, k = self.pad, self.k
-        xp = np.pad(x, ((0, 0), (0, 0), (p, p), (p, p))) if p else x
-        win = np.lib.stride_tricks.sliding_window_view(xp, (k, k), axis=(2, 3))  # (n, c, ho, wo, k, k)
-        ho, wo = win.shape[2], win.shape[3]
-        cols = win.transpose(0, 2, 3, 1, 4, 5).reshape(n * ho * wo, c * k * k)
-        self.cache = (cols, x.shape, xp.shape, ho, wo)
+        xh = x.transpose(0, 2, 3, 1)
+        if p:
+            xh = np.pad(xh, ((0, 0), (p, p), (p, p), (0, 0)))
+        ho, wo = xh.shape[1] - k + 1, xh.shape[2] - k + 1
+        if k == 1:
+            cols = np.ascontiguousarray(xh).reshape(-1, c)
+        else:
+            cols = np.concatenate([xh[:, i:i + ho, j:j + wo, :] for i in range(k) for j in range(k)],
+                                  axis=3).reshape(-1, k * k * c)
+        self.cache = (cols, x.shape, xh.shape, ho, wo)
         y = cols @ self.params["W"] + self.params["b"]
         return y.reshape(n, ho, wo, self.c_out).transpose(0, 3, 1, 2)
 
@@ -46,12 +56,17 @@ class Conv2d(Layer):
         d2 = dy.transpose(0, 2, 3, 1).reshape(-1, self.c_out)
         self.grads["W"] += cols.T @ d2
         self.grads["b"] += d2.sum(axis=0)
-        dcols = (d2 @ self.params["W"].T).reshape(n, ho, wo, c, k, k)
-        dxp = np.zeros(pshape, dtype=dy.dtype)
-        for i in range(k):
-            for j in range(k):
-                dxp[:, :, i:i + ho, j:j + wo] += dcols[:, :, :, :, i, j].transpose(0, 3, 1, 2)
-        return dxp[:, :, p:p + h, p:p + w] if p else dxp
+        dcols = (d2 @ self.params["W"].T).reshape(n, ho, wo, k * k, c)
+        if k == 1:
+            dxh = dcols[:, :, :, 0, :]
+        else:
+            dxh = np.zeros(pshape, dtype=dy.dtype)
+            for i in range(k):
+                for j in range(k):
+                    dxh[:, i:i + ho, j:j + wo, :] += dcols[:, :, :, i * k + j, :]
+        if p:
+            dxh = dxh[:, p:p + h, p:p + w, :]
+        return dxh.transpose(0, 3, 1, 2)
 
 
 class GroupNorm(Layer):

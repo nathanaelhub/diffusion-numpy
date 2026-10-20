@@ -8,10 +8,11 @@ from diffusion.nn import Denoiser, LayerNorm, sinusoid
 from diffusion.schedule import Schedule, ddim_sample, ddpm_sample
 
 
+@pytest.mark.parametrize("arch", ["mlp", "unet"])
 @pytest.mark.parametrize("n_classes", [0, 10])
-def test_backward_matches_finite_differences(n_classes):
+def test_backward_matches_finite_differences(arch, n_classes):
     for seed in range(3):
-        assert gradcheck.check(n_classes=n_classes, seed=seed) <= 1.0
+        assert gradcheck.check(n_classes=n_classes, seed=seed, arch=arch) <= 1.0
 
 
 def test_layernorm_output_is_normalized():
@@ -107,11 +108,12 @@ def test_png_writer_produces_a_decodable_image(tmp_path):
     assert len(rows) == img.shape[0] * (img.shape[1] + 1)
 
 
-def test_resume_reproduces_an_uninterrupted_run(tmp_path, monkeypatch):
+@pytest.mark.parametrize("arch", ["mlp", "unet"])
+def test_resume_reproduces_an_uninterrupted_run(tmp_path, monkeypatch, arch):
     rng = np.random.default_rng(0)
     fake = (rng.uniform(-1, 1, (64, 784)).astype(np.float32), rng.integers(0, 10, 64))
     monkeypatch.setattr(data, "load", lambda split="train": fake)
-    kw = dict(steps=20, batch=8, width=32, blocks=1, every=10, log=lambda s: None)
+    kw = dict(steps=20, batch=8, width=32, blocks=1, every=10, log=lambda s: None, arch=arch, channels=(4, 8))
 
     train.train(tmp_path / "straight", **kw)
     train.train(tmp_path / "split", **kw, stop_at=10)  # "interrupted" at step 10
@@ -175,7 +177,7 @@ def test_conv2d_matches_a_naive_convolution():
     rng = np.random.default_rng(0)
     layer = Conv2d(2, 3, 3, rng, padding=1, dtype=np.float64)
     x = _x((2, 2, 4, 5))
-    W = layer.params["W"].reshape(2, 3, 3, 3)  # (c_in, ky, kx, c_out)
+    W = layer.params["W"].reshape(3, 3, 2, 3).transpose(2, 0, 1, 3)  # rows (ky, kx, c_in) -> (c_in, ky, kx, c_out)
     xp = np.pad(x, ((0, 0), (0, 0), (1, 1), (1, 1)))
     naive = np.zeros((2, 3, 4, 5))
     for n in range(2):
@@ -199,3 +201,15 @@ def test_groupnorm_gradients_and_normalization():
 @pytest.mark.parametrize("layer", [AvgPool2(), Upsample2()])
 def test_resampling_gradients(layer):
     assert gradcheck.check_layer(layer, _x((2, 3, 4, 6))) <= 1.0
+
+
+def test_unet_shapes_and_old_checkpoints_still_load(tmp_path):
+    from diffusion.unet import UNet
+    from diffusion.train import build_model
+    net = UNet(channels=(4, 8), n_classes=10)
+    out = net.forward(np.zeros((3, 784), np.float32), np.array([0, 500, 999]), np.array([1, 2, 10]))
+    assert out.shape == (3, 784) and out.dtype == np.float32
+    # A config from before the U-Net (no "arch") builds the MLP.
+    old = {"dim": 784, "width": 32, "blocks": 1, "temb_dim": 128, "n_classes": 10, "skip": True}
+    assert type(build_model(old)).__name__ == "Denoiser"
+    assert type(build_model(net.config)).__name__ == "UNet"

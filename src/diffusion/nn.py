@@ -57,9 +57,8 @@ class Linear(Layer):
 
 class SiLU(Layer):
     def forward(self, x):
-        # exp of -|x| never overflows; the two branches are the same function.
-        e = np.exp(-np.abs(x))
-        s = np.where(x >= 0, 1.0 / (1.0 + e), e / (1.0 + e))
+        # sigmoid(x) = (1 + tanh(x/2)) / 2: one pass, and tanh can't overflow.
+        s = 0.5 * (1.0 + np.tanh(0.5 * x))
         self.cache = (x, s)
         return x * s
 

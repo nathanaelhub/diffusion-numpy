@@ -36,16 +36,28 @@ def save(path: Path, net: Denoiser, ema: EMA, opt: Adam, step: int, rng, meta: d
     tmp.replace(path)
 
 
+def build_model(config: dict, seed: int = 0, dtype=np.float32):
+    """MLP or U-Net from a checkpoint's config. Configs written before the
+    U-Net existed have no "arch" and are MLPs."""
+    cfg = dict(config)
+    if cfg.pop("arch", "mlp") == "unet":
+        from .unet import UNet
+        cfg["channels"] = tuple(cfg["channels"])
+        return UNet(**cfg, seed=seed, dtype=dtype)
+    return Denoiser(**cfg, seed=seed, dtype=dtype)
+
+
 def load(path: Path):
     """(net with EMA weights loaded, info) for sampling."""
     f = np.load(path)
     info = json.loads(str(f["info"]))
-    net = Denoiser(**info["config"])
+    net = build_model(info["config"])
     net.load({k: f[f"ema/{k}"] for k in net.parameters()})
     return net, info
 
 
 def train(out: Path, steps: int = 30_000, batch: int = 128, lr: float = 1e-3, warmup: int = 500,
+          arch: str = "mlp", channels: tuple[int, int] = (16, 32),
           width: int = 512, blocks: int = 3, n_classes: int = 10, skip: bool = True, p_uncond: float = 0.1,
           schedule: str = "cosine", pred: str = "v", grad_clip: float = 1.0, ema_decay: float = 0.999,
           every: int = 1000, seed: int = 0, resume: bool = False, stop_at: int | None = None,
@@ -56,7 +68,11 @@ def train(out: Path, steps: int = 30_000, batch: int = 128, lr: float = 1e-3, wa
     ckpt = out / "model.npz"
     x_all, y_all = load_mnist("train")
     sched = Schedule(kind=schedule)
-    net = Denoiser(width=width, blocks=blocks, n_classes=n_classes, skip=skip, seed=seed)
+    if arch == "unet":
+        config = {"arch": "unet", "channels": channels, "n_classes": n_classes}
+    else:
+        config = {"width": width, "blocks": blocks, "n_classes": n_classes, "skip": skip}
+    net = build_model(config, seed=seed)
     opt = Adam(net.parameters(), lr=lr)
     ema = EMA(net.parameters(), ema_decay)
     rng = np.random.default_rng(seed)

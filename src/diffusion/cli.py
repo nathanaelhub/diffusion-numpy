@@ -19,6 +19,8 @@ def main(argv: list[str] | None = None) -> int:
     t.add_argument("--steps", type=int, default=30_000)
     t.add_argument("--batch", type=int, default=128)
     t.add_argument("--lr", type=float, default=1e-3)
+    t.add_argument("--arch", choices=("mlp", "unet"), default="mlp")
+    t.add_argument("--channels", default="16,32", help="U-Net channels at 28x28 and 14x14/7x7")
     t.add_argument("--width", type=int, default=512)
     t.add_argument("--blocks", type=int, default=3)
     t.add_argument("--unconditional", action="store_true", help="no class labels (no guidance)")
@@ -53,7 +55,8 @@ def main(argv: list[str] | None = None) -> int:
     a = ap.parse_args(argv)
     if a.cmd == "train":
         from .train import train
-        train(a.out, steps=a.steps, batch=a.batch, lr=a.lr, width=a.width, blocks=a.blocks,
+        train(a.out, steps=a.steps, batch=a.batch, lr=a.lr, width=a.width, blocks=a.blocks, arch=a.arch,
+              channels=tuple(int(c) for c in a.channels.split(",")),
               n_classes=0 if a.unconditional else 10, schedule=a.schedule, pred=a.pred, seed=a.seed, resume=a.resume)
         return 0
 
