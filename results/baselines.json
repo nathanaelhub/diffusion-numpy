@@ -1,0 +1,65 @@
+{
+  "model": "runs/main/model.npz",
+  "step": 30000,
+  "sampler": "ddim",
+  "steps": 50,
+  "guidance": 1.0,
+  "seconds": 4.4,
+  "samples": {
+    "n": 2000,
+    "confidence": 0.8841332047813646,
+    "class_share": [
+      0.102,
+      0.087,
+      0.099,
+      0.115,
+      0.145,
+      0.062,
+      0.104,
+      0.087,
+      0.139,
+      0.06
+    ],
+    "coverage": 0.9649527958943797,
+    "frechet": 177.21509015228207,
+    "conditional_accuracy": 0.7945
+  },
+  "real_train_images": {
+    "n": 2000,
+    "confidence": 0.9842539429664612,
+    "class_share": [
+      0.096,
+      0.115,
+      0.1,
+      0.099,
+      0.112,
+      0.088,
+      0.101,
+      0.111,
+      0.082,
+      0.098
+    ],
+    "coverage": 0.9951416378068787,
+    "frechet": 78.5574936490043,
+    "conditional_accuracy": 0.9795
+  },
+  "gaussian_noise": {
+    "n": 2000,
+    "confidence": 0.6200935244560242,
+    "class_share": [
+      0.102,
+      0.079,
+      0.163,
+      0.213,
+      0.026,
+      0.135,
+      0.053,
+      0.183,
+      0.019,
+      0.027
+    ],
+    "coverage": 0.7873781566227677,
+    "frechet": 594.5252352242425
+  },
+  "classifier_test_accuracy": 0.9734
+}

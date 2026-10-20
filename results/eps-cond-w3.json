@@ -1,0 +1,27 @@
+{
+  "model": "runs/eps-30k/model.npz",
+  "step": 30000,
+  "sampler": "ddim",
+  "steps": 50,
+  "guidance": 3.0,
+  "seconds": 8.7,
+  "samples": {
+    "n": 2000,
+    "confidence": 0.8262887771115361,
+    "class_share": [
+      0.155,
+      0.013,
+      0.141,
+      0.109,
+      0.159,
+      0.031,
+      0.098,
+      0.033,
+      0.204,
+      0.058
+    ],
+    "coverage": 0.8086042983967584,
+    "frechet": 251.56028789158086,
+    "conditional_accuracy": 0.2445
+  }
+}

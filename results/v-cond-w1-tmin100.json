@@ -1,0 +1,28 @@
+{
+  "model": "runs/main/model.npz",
+  "step": 30000,
+  "sampler": "ddim",
+  "steps": 50,
+  "guidance": 1.0,
+  "t_min": 100,
+  "seconds": 7.6,
+  "samples": {
+    "n": 2000,
+    "confidence": 0.8860224148842317,
+    "class_share": [
+      0.101,
+      0.09,
+      0.098,
+      0.116,
+      0.143,
+      0.064,
+      0.102,
+      0.088,
+      0.137,
+      0.062
+    ],
+    "coverage": 0.9675808459763747,
+    "frechet": 174.3995420475419,
+    "conditional_accuracy": 0.8
+  }
+}
