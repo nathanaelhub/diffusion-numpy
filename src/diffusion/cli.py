@@ -92,9 +92,11 @@ def main(argv: list[str] | None = None) -> int:
     x_test, y_test = load("test")
     ref = x_test[: a.n]
     asked = np.arange(a.n) % 10 if a.conditional else None
+    # Chunks bound memory; the U-Net's im2col buffers need smaller ones.
+    chunk = 32 if net.config.get("arch") == "unet" else 500
     t0 = time.perf_counter()
     x = np.concatenate([generate(len(c), c if asked is not None else None)
-                        for c in np.array_split(asked if asked is not None else np.zeros(a.n, int), max(1, a.n // 500))])
+                        for c in np.array_split(asked if asked is not None else np.zeros(a.n, int), max(1, a.n // chunk))])
     report = {"model": str(a.model), "step": info["step"], "sampler": a.sampler,
               "steps": a.steps if a.sampler == "ddim" else sched.T, "guidance": a.guidance,
               "t_min": a.t_min if a.sampler == "ddim" else 0,
